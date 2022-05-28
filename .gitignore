@@ -3,6 +3,14 @@ node_modules
 coverage
 coverage.json
 typechain
+platform.sol
+.eslintignore
+.eslintrc.js
+.npmignore
+.prettierignore
+.prettiererrc
+.solhint.json
+.solhintignore
 
 #Hardhat files
 cache
