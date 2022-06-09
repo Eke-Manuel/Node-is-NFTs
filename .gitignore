@@ -11,6 +11,8 @@ platform.sol
 .prettiererrc
 .solhint.json
 .solhintignore
+test
+deploy.js
 
 #Hardhat files
 cache
