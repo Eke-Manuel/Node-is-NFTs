@@ -10,9 +10,7 @@ import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
 import "base64-sol/base64.sol";
 
-// File: contracts/DorisNFT.sol
-
-contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibleInterface {
+contract weatherNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibleInterface {
     using Strings for uint256;
     using Counters for Counters.Counter;
     using Chainlink for Chainlink.Request;
@@ -32,7 +30,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     bool public paused = true;
 
     bytes32[] requestIds;
-    weatherNFT[] public weather_nfts;
+    Token[] public weather_nfts;
     string[5] precipitationTypes = ["No precipitation", "Rain", "Snow", "Ice", "Mixed"];
 
     address private keeperRegistryAddress;
@@ -42,7 +40,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
 
     /* ========== TOKEN STRUCTURE ========== */
 
-    struct weatherNFT {
+    struct Token {
         string location;
         string precipitationType;
         uint256 timestamp;
@@ -101,9 +99,17 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     mapping(bytes32 => CurrentConditionsResult) public requestIdCurrentConditionsResult;
     mapping(bytes32 => LocationResult) public requestIdLocationResult;
     mapping(bytes32 => RequestParams) public requestIdRequestParams;
-    mapping(uint256 => weatherNFT) public tokenIdToToken;
+    mapping(uint256 => Token) public tokenIdToToken;
     mapping(uint256 => Target) public tokenIdToTarget;
 
+
+    event requestSent(bytes32 requestId, string lattitude, string longitude);
+    event requestFulfiled(bytes32 requestId);
+    event tokenCreated(uint256 tokenId, string tokenURI);
+    event tokenUpdated(uint256 indexed tokenId);
+    event newKeeperRegistryAddress(address indexed keeperRegistryAddress);
+    event newApproval(address to, uint256 tokenId);
+    event tokenTransfered(address from, address to, uint256 tokenId);
 
     /* ========== CONSTRUCTOR ========== */
 
@@ -115,7 +121,6 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     */
     constructor(
         address _platform,
-        address _doris,
         address _link, 
         address _oracle,
         address _keeperRegistryAddress,
@@ -129,8 +134,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
         setKeeperRegistryAddress(_keeperRegistryAddress);
         setWaitPeriodSeconds(_waitPeriodSeconds);
         
-        factory = msg.sender;
-        doris = _doris;
+        doris = msg.sender;
         platform = _platform;
     }
 
@@ -220,6 +224,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
         request.add("units", _units);
 
         bytes32 requestId = sendChainlinkRequest(request, _fee);
+        emit requestSent(requestId, _lat, _lon);
 
         storeRequestParams(requestId, 0, "location-current-conditions", _lat, _lon, _units);
     }
@@ -247,6 +252,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
             storeLocationResult(_requestId, _locationResult);
             storeCurrentConditionsResult(_requestId, _currentConditionsResult);
         }
+        emit requestFulfiled(_requestId);
     }
 
 
@@ -275,6 +281,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
       });
 
         tokenIdToToken[tokenId] = weather_nfts[tokenId];
+        emit tokenCreated(tokenId, tokenURI(tokenId));
         tokenIds.increment();
     }
 
@@ -289,6 +296,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
                 requestLocationCurrentConditions(jobId, fee, lat, lon, "metric");
                 _updateToken(target.location, outdatedTokens[idx]);
                 target.lastUpdateTimestamp = uint56(block.timestamp);
+                emit tokenUpdated(outdatedTokens[idx]);
 
             }
         }
@@ -297,7 +305,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
 
 
     function formatTokenURI(
-        weatherNFT memory _newToken,
+        Token memory _newToken,
         uint256 _tokenId 
     ) internal returns (string memory) {
         return string(abi.encodePacked(
@@ -379,7 +387,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     }
 
     function _createToken(string memory _location) private {
-        weatherNFT memory newToken;
+        Token memory newToken;
        
         newToken.location = _location;
 
@@ -406,7 +414,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     }
 
     function _updateToken(string memory _location, uint256 _tokenId) private {
-        weatherNFT memory newToken;
+        Token memory newToken;
        
         newToken.location = _location;
 
@@ -432,9 +440,9 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     }
 
 
-    /**@dev Consumes a token and returns a base64 encoded string of the token's metadata */
+    /**@dev Consumes a token struct and its Id and returns a base64 encoded string of the token's metadata */
 
-    function _base64(weatherNFT memory _newToken, uint256 _tokenId) 
+    function _base64(Token memory _newToken, uint256 _tokenId) 
         private view returns(string memory) {
         return(Base64.encode(bytes(
                         abi.encodePacked(
@@ -498,6 +506,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     function setKeeperRegistryAddress(address _keeperRegistryAddress) public onlyPlatform {
         require(_keeperRegistryAddress != address(0));
         keeperRegistryAddress = _keeperRegistryAddress;
+        emit newKeeperRegistryAddress(_keeperRegistryAddress);
     }
 
     function setWaitPeriodSeconds(uint256 _period) public onlyDoris {
@@ -545,6 +554,10 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
         return chainlinkOracleAddress();
     }
 
+    function contractOwner() public view returns (address) {
+        return doris;
+    }
+
     function withdrawLink() public onlyDoris {
         LinkTokenInterface linkToken = LinkTokenInterface(chainlinkTokenAddress());
         require(linkToken.transfer(msg.sender, linkToken.balanceOf(address(this))), "Unable to withdraw funds");
@@ -567,6 +580,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
     function mint(address _to, uint256 _tokenId) external payable unpaused {
         require(msg.value >= cost, "Value is less than token cost");
         require(_tokenId <= tokenIds.current(), "Invalid tokenId:Token does not exist");
+        require(doris == ownerOf(_tokenId), "Token already minted");
         _transfer(doris, _to, _tokenId);
         _handlepaymentnew(msg.value);
     }
@@ -593,6 +607,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
             _handlepaymentold(_from,msg.value);
         }
         transferFrom(_from, _to, _tokenId);
+        emit tokenTransfered(_from, _to, _tokenId);
     }
 
     function approve(address _to, uint256 _tokenId) public virtual override(ERC721) {
@@ -600,6 +615,7 @@ contract DorisNFT is ERC721URIStorage, Ownable, ChainlinkClient, KeeperCompatibl
         require(_to != owner, "ERC721: approval to current owner");
         require(msg.sender == owner, "ERC721: approve caller is not owner nor approved for all");
         _approve(_to, _tokenId);
+        emit newApproval(_to, _tokenId);
     }
 
 }
